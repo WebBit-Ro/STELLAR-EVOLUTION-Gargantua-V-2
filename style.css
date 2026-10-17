@@ -1,0 +1,273 @@
+/* ==========================================================================
+   GARGANTUA — CINEMATIC PRESENTATION
+   ========================================================================== */
+
+:root {
+  --bg: #010208;
+  --fg: #f7f8ff;
+  --muted: rgba(230, 235, 252, .62);
+  --faint: rgba(255, 255, 255, .24);
+  --cyan: #75ddff;
+  --violet: #8d7dff;
+  --pad: clamp(18px, 3.6vw, 60px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--bg);
+}
+
+html { scroll-behavior: auto; }
+
+body {
+  min-height: 1000vh;
+  height: 1000vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--fg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+::selection { background: rgba(110, 220, 255, .20); }
+
+::-webkit-scrollbar {
+  width: 7px;
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(#435b71, #786ea8);
+}
+
+#app {
+  position: relative;
+  min-height: 100vh;
+  overflow: clip;
+}
+
+#webgl {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  background: var(--bg);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 48%, transparent 24%, rgba(0,0,0,.11) 56%, rgba(0,0,0,.80) 100%),
+    linear-gradient(90deg, rgba(0,0,0,.46), transparent 25%, transparent 75%, rgba(0,0,0,.38));
+}
+
+.grain {
+  position: fixed;
+  inset: -60%;
+  z-index: 3;
+  pointer-events: none;
+  opacity: .026;
+  background-image: radial-gradient(rgba(255,255,255,.8) .55px, transparent .7px);
+  background-size: 5px 5px;
+  animation: grain .45s steps(2) infinite;
+}
+
+@keyframes grain {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-1%, 1%, 0); }
+  100% { transform: translate3d(1%, -1%, 0); }
+}
+
+.hud {
+  position: fixed;
+  z-index: 10;
+  left: var(--pad);
+  right: var(--pad);
+  pointer-events: none;
+}
+
+.hud--top {
+  top: max(18px, env(safe-area-inset-top));
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255,255,255,.38);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+}
+
+.brand span { color: rgba(255,255,255,.58); }
+
+.progress {
+  position: fixed;
+  top: 50%;
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.progress__track {
+  position: relative;
+  width: 2px;
+  height: min(34vh, 260px);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.09);
+}
+
+.progress__fill {
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  height: 0;
+  transform-origin: 50% 0;
+  border-radius: inherit;
+  background: linear-gradient(#91ecff, #8d78ff);
+  box-shadow: 0 0 13px rgba(135,222,255,.52);
+  will-change: height;
+}
+
+.progress__value {
+  width: 32px;
+  text-align: left;
+  color: rgba(255,255,255,.48);
+  font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.story {
+  position: relative;
+  z-index: 4;
+  min-height: 1000vh;
+  height: 1000vh;
+}
+
+.story__pin {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+}
+
+.phase-anchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.phase-display {
+  position: fixed;
+  left: var(--pad);
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 12;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.phase-display::before {
+  content: "";
+  display: block;
+  width: 26px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(126,220,255,.65), transparent);
+  transform-origin: left center;
+  opacity: .8;
+}
+
+.phase-display__name {
+  display: block;
+  color: rgba(240,246,255,.44);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: .24em;
+  line-height: 1;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(70,120,170,.12);
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition: opacity .20s ease, transform .26s cubic-bezier(.22,.61,.36,1);
+}
+
+.phase-display__name.is-changing {
+  opacity: 0;
+  transform: translate3d(0, 3px, 0);
+}
+
+.error-panel {
+  position: fixed;
+  inset: auto var(--pad) var(--pad);
+  z-index: 100;
+  max-width: 540px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: rgba(9,10,18,.86);
+  color: white;
+  backdrop-filter: blur(12px);
+}
+
+.error-panel strong,
+.error-panel span { display: block; }
+
+.error-panel strong { margin-bottom: 6px; }
+
+.error-panel span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .brand { font-size: 7px; letter-spacing: .20em; }
+
+  .progress {
+    right: 13px;
+  }
+
+  .progress__track {
+    height: min(28vh, 190px);
+  }
+
+  .progress__value {
+    width: 30px;
+    font-size: 9px;
+  }
+
+  .phase-display {
+    bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  .phase-display__name {
+    font-size: 7px;
+    letter-spacing: .20em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grain { animation: none; }
+}

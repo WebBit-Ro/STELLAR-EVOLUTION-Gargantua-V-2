@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#010208">
+  <meta name="description" content="Интерактивная визуализация эволюции массивной звезды от газопылевого облака до чёрной дыры.">
+  <title>STELLAR EVOLUTION — Gargantua</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app">
+
+    <canvas id="webgl" aria-hidden="true"></canvas>
+
+    <header class="hud hud--top" aria-label="Project header">
+      <div class="brand"><span>STELLAR EVOLUTION</span> / GARGANTUA</div>
+    </header>
+
+    <aside class="progress" aria-label="Прогресс визуализации">
+      <div class="progress__track"><div class="progress__fill" id="progressFill"></div></div>
+      <div class="progress__value" id="progressValue">00%</div>
+    </aside>
+
+    <div class="phase-display" aria-live="polite" aria-atomic="true">
+      <span class="phase-display__name" id="phaseName">MOLECULAR CLOUD</span>
+    </div>
+
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <main id="story" class="story">
+      <section class="story__pin" id="storyPin">
+        <div class="phase-anchor" aria-hidden="true"></div>
+      </section>
+    </main>
+
+    <div id="errorPanel" class="error-panel" hidden>
+      <strong>WebGL не запустился</strong>
+      <span>Проверьте, что браузер поддерживает WebGL и что интернет-доступ к CDN не заблокирован.</span>
+    </div>
+  </div>
+
+  <!--
+    Libraries are loaded with fallbacks.
+    If one CDN is blocked in the user's browser/network, the next one is tried.
+    Everything else in the scene remains procedural.
+  -->
+  <script>
+    (function () {
+      const resources = [
+        {
+          name: "Three.js",
+          test: () => !!window.THREE,
+          urls: [
+            "https://cdnjs.cloudflare.com/ajax/libs/three.js/r160/three.min.js",
+            "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js",
+            "https://unpkg.com/three@0.160.0/build/three.min.js"
+          ]
+        },
+        {
+          name: "GSAP",
+          test: () => !!window.gsap,
+          urls: [
+            "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js",
+            "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js",
+            "https://unpkg.com/gsap@3.12.5/dist/gsap.min.js"
+          ]
+        },
+        {
+          name: "ScrollTrigger",
+          test: () => !!window.ScrollTrigger,
+          urls: [
+            "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js",
+            "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js",
+            "https://unpkg.com/gsap@3.12.5/dist/ScrollTrigger.min.js"
+          ]
+        }
+      ];
+
+      window.__libraryLoader = (async function loadAll() {
+        for (const resource of resources) {
+          if (resource.test()) continue;
+
+          let loaded = false;
+          for (const url of resource.urls) {
+            try {
+              await new Promise((resolve, reject) => {
+                const tag = document.createElement("script");
+                tag.src = url;
+                tag.async = false;
+                tag.crossOrigin = "anonymous";
+                tag.onload = resolve;
+                tag.onerror = () => reject(new Error(url));
+                document.head.appendChild(tag);
+              });
+              if (resource.test()) {
+                loaded = true;
+                break;
+              }
+            } catch (err) {
+              console.warn("CDN failed:", url);
+            }
+          }
+
+          if (!loaded) {
+            throw new Error(resource.name + " could not be loaded from any CDN.");
+          }
+        }
+      })();
+    })();
+  </script>
+
+  <script>
+    window.__libraryLoader
+      .then(() => {
+        const app = document.createElement("script");
+        app.src = "./script.js";
+        app.onload = () => console.info("Stellar scene loaded.");
+        app.onerror = () => {
+          const p = document.getElementById("errorPanel");
+          if (p) {
+            p.hidden = false;
+            const span = p.querySelector("span");
+            if (span) span.textContent = "Не удалось загрузить script.js. Убедитесь, что все три файла находятся в одной папке.";
+          }
+        };
+        document.body.appendChild(app);
+      })
+      .catch((err) => {
+        console.error(err);
+        const p = document.getElementById("errorPanel");
+        if (p) {
+          p.hidden = false;
+          const span = p.querySelector("span");
+          if (span) span.textContent = "Библиотеки Three.js / GSAP не загрузились. Ваша сеть или браузер блокирует CDN. Попробуйте другой интернет/браузер или разрешите загрузку внешних скриптов.";
+        }
+      });
+  </script>
+</body>
+</html>
