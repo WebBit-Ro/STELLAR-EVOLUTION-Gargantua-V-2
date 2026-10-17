@@ -1,6 +1,6 @@
 # 🌌 GARGANTUA — Stellar Evolution / Ultra Smooth Edition
 
----
+
 Глянуть работу сайта вы сможете [тут](https://webbit-ro.github.io/STELLAR-EVOLUTION-Gargantua-V-2/)
 ---
 
