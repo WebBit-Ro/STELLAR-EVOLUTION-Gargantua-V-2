@@ -8,8 +8,8 @@
 
     Visual sequence:
       0–17%   Molecular cloud → gravitational gathering
-      8–25%   Protostar + accretion disk + bipolar outflows
-      17–31%  Massive blue star
+      7–23%   Protostar + accretion disk + bipolar outflows
+      23–31%  Massive blue star
       27–47%  Red supergiant expansion
       39–55%  Core collapse
       48–70%  Supernova + shock fronts + ejecta
@@ -51,16 +51,8 @@
   const progressValue =
     document.getElementById("progressValue");
 
-  const phaseLabel =
-    document.getElementById("phaseLabel");
-
   const phaseName =
     document.getElementById("phaseName");
-
-  const storyCards =
-    Array.from(
-      document.querySelectorAll(".copy__card")
-    );
 
   const errorPanel =
     document.getElementById("errorPanel");
@@ -188,8 +180,8 @@
 
     bloomStrength:
       mobile
-        ? 1.35
-        : 1.82,
+        ? 1.42
+        : 1.96,
 
     bloomRadius:
       0.92,
@@ -213,22 +205,19 @@
     targetProgress:
       0,
 
+    cinematicPulse:
+      0,
+
     cloud:
       0,
 
     protostar:
       0,
 
-    massiveStar:
-      0,
-
     redSupergiant:
       0,
 
     compactRemnant:
-      0,
-
-    cloudPulse:
       0,
 
     collapse:
@@ -247,7 +236,10 @@
       0,
 
     time:
-      0
+      0,
+
+    lastPercent:
+      -1
   };
 
 
@@ -313,10 +305,8 @@
 
   let cinematicLight;
 
-  let currentTextStage =
-    -1;
-
-  let lastQualityScale = 1;
+  let currentPhase = -1;
+  let phaseChangeTimer = 0;
 
 
   /*
@@ -430,6 +420,59 @@
         start
       )
     );
+  }
+
+
+  // Quintic smoothstep: much softer at both ends than a cubic blend.
+  function smootherStep(value) {
+    const t = clamp01(value);
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  // Critically-damped-ish scalar follower. The response is smooth,
+  // frame-rate independent and does not overshoot.
+  function damp(current, target, lambda, delta) {
+    return current + (target - current) * (1 - Math.exp(-lambda * delta));
+  }
+
+  // Map linear scroll to the visual timeline. The render loop applies the
+  // only time-based smoothing, keeping input predictable and the scene calm.
+  const CINEMATIC_TRACK = [
+    { scroll: 0.000, story: 0.000 },
+    { scroll: 0.100, story: 0.070 },
+    { scroll: 0.155, story: 0.115 },
+    { scroll: 0.215, story: 0.180 },
+    { scroll: 0.275, story: 0.255 },
+    { scroll: 0.335, story: 0.325 },
+    { scroll: 0.405, story: 0.395 },
+    { scroll: 0.470, story: 0.460 },
+    { scroll: 0.520, story: 0.500 },
+    { scroll: 0.575, story: 0.555 },
+    { scroll: 0.620, story: 0.605 },
+    { scroll: 0.675, story: 0.670 },
+    { scroll: 0.730, story: 0.735 },
+    { scroll: 0.790, story: 0.805 },
+    { scroll: 0.845, story: 0.865 },
+    { scroll: 0.905, story: 0.925 },
+    { scroll: 0.955, story: 0.970 },
+    { scroll: 0.985, story: 0.992 },
+    { scroll: 1.000, story: 1.000 }
+  ];
+
+  function mapScrollToStory(scroll) {
+    const p = clamp01(scroll);
+    if (p <= 0) return 0;
+    if (p >= 1) return 1;
+
+    for (let i = 1; i < CINEMATIC_TRACK.length; i++) {
+      const a = CINEMATIC_TRACK[i - 1];
+      const b = CINEMATIC_TRACK[i];
+      if (p <= b.scroll) {
+        const local = range(p, a.scroll, b.scroll);
+        return a.story + (b.story - a.story) * smootherStep(local);
+      }
+    }
+    return 1;
   }
 
 
@@ -2061,7 +2104,7 @@
 
 
     renderer.toneMappingExposure =
-      1.34;
+      1.42;
 
 
     scene =
@@ -2902,18 +2945,22 @@
       })
     );
 
-    const diskGeo = new THREE.TorusGeometry(1.35, 0.085, 12, 160);
+    // Do not use a perfect torus here: during the hot-core phase a thin ring
+    // made the object read visually as Saturn. A shallow, irregular plasma
+    // sheet keeps the accretion geometry but avoids the planetary silhouette.
+    const diskGeo = new THREE.SphereGeometry(2.05, 48, 20);
     protostarDisk = new THREE.Mesh(
       diskGeo,
       new THREE.MeshBasicMaterial({
-        color: 0xff9f46,
+        color: 0xff8c3a,
         transparent: true,
         opacity: 0,
+        side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending,
         depthWrite: false
       })
     );
-    protostarDisk.rotation.x = Math.PI * 0.48;
+    protostarDisk.scale.set(1.0, 0.035, 1.0);
 
     protostarGroup.add(protostarHalo, protostarDisk, protostarCore);
     protostarGroup.scale.setScalar(0.001);
@@ -4611,9 +4658,53 @@
           128
         ),
 
-        new THREE.MeshBasicMaterial({
-          color:
-            0x000000
+        new THREE.ShaderMaterial({
+          uniforms: {
+            uTime: { value: 0 },
+            uStrength: { value: 0 }
+          },
+          vertexShader: `
+            varying vec3 vLocalPosition;
+            varying vec3 vNormalView;
+
+            void main() {
+              vLocalPosition = normalize(position);
+              vNormalView = normalize(normalMatrix * normal);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            precision highp float;
+
+            uniform float uTime;
+            uniform float uStrength;
+            varying vec3 vLocalPosition;
+            varying vec3 vNormalView;
+
+            void main() {
+              vec3 p = normalize(vLocalPosition);
+              float longitude = atan(p.z, p.x);
+              float latitude = asin(clamp(p.y, -1.0, 1.0));
+
+              // Several very dark counter-moving bands make the horizon feel
+              // alive and rotating without turning the event horizon grey.
+              float flowA = 0.5 + 0.5 * sin(longitude * 7.0 + latitude * 5.0 - uTime * 0.78);
+              float flowB = 0.5 + 0.5 * sin(longitude * 13.0 - latitude * 8.0 - uTime * 1.12);
+              float shear = 0.5 + 0.5 * sin(longitude * 3.0 + latitude * 15.0 - uTime * 0.46);
+              float flow = flowA * 0.48 + flowB * 0.34 + shear * 0.18;
+
+              float facing = clamp(abs(vNormalView.z), 0.0, 1.0);
+              float limb = pow(1.0 - facing, 3.0);
+
+              // Keep the centre essentially black. Only a tiny moving
+              // near-black structure and edge sheen reveal the rotation.
+              float surface = (0.0025 + flow * 0.0105 + limb * 0.0075) * uStrength;
+              vec3 tint = mix(vec3(0.55, 0.60, 0.78), vec3(0.28, 0.18, 0.48), flowB);
+              gl_FragColor = vec4(tint * surface, 1.0);
+            }
+          `,
+          depthWrite: true,
+          depthTest: true
         })
 
       );
@@ -5335,325 +5426,168 @@
     CINEMATIC SCROLL / STORY TIMELINE
     ========================================================================
 
-    The scroll is intentionally NOT a direct phase switch anymore.
-    ScrollTrigger controls one long GSAP timeline containing:
-      1) an eased transition to the next phase
-      2) a short hold where the phase remains visually stable
-
-    The render loop then lightly smooths the timeline value once more. This
-    gives wheel, trackpad and touch input a film-like inertia without making
-    the scene feel disconnected from the scroll position.
+    Scroll is the single source of truth for the cinematic state.
+    ScrollTrigger reports the normalized scroll position, the visual loop
+    applies one frame-rate-independent damping layer, and the phase systems
+    interpolate continuously from the resulting state.
   */
 
   const CINEMATIC_PHASES = [
     {
-      id: "cloud",
       point: 0.000,
-      label: "PHASE 01",
       name: "MOLECULAR CLOUD"
     },
     {
-      id: "protostar",
       point: 0.135,
-      label: "PHASE 02",
       name: "PROTOSTAR"
     },
     {
-      id: "massiveStar",
       point: 0.270,
-      label: "PHASE 03",
       name: "MASSIVE STAR"
     },
     {
-      id: "redSupergiant",
       point: 0.410,
-      label: "PHASE 04",
       name: "RED SUPERGIANT"
     },
     {
-      id: "collapse",
       point: 0.555,
-      label: "PHASE 05",
       name: "CORE COLLAPSE"
     },
     {
-      id: "nova",
       point: 0.700,
-      label: "PHASE 06",
       name: "SUPERNOVA"
     },
     {
-      id: "compactRemnant",
       point: 0.840,
-      label: "PHASE 07",
       name: "COMPACT REMNANT"
     },
     {
-      id: "blackHole",
       point: 1.000,
-      label: "PHASE 08",
       name: "BLACK HOLE / GARGANTUA"
     }
   ];
 
-  const TEXT_PHASES = [
-    0.065,
-    0.198,
-    0.332,
-    0.485,
-    0.627,
-    0.770,
-    0.900,
-    0.975
-  ];
-
-  const STORY_HOLD = 0.62;
-  const STORY_TRANSITION = 1.0;
-
-  const scrollModel = {
-    value: 0
-  };
-
+  const PHASE_POINTS = CINEMATIC_PHASES.map((phase) => phase.point);
 
   function setupScroll() {
+    // One scroll source + one visual damping layer. The previous version
+    // stacked a scrubbed GSAP timeline on top of a second smoothing filter
+    // while reading the raw ScrollTrigger progress, so the timeline proxy
+    // was never actually driving the scene.
+    gsap.ticker.lagSmoothing(1000, 16);
 
-    // Prevent long main-thread stalls from causing GSAP to jump over a large
-    // section of the timeline after a temporary frame-rate drop.
-    gsap.ticker.lagSmoothing(1000, 33);
-
-    const timeline = gsap.timeline({
-
-      defaults: {
-        overwrite: true
-      },
-
-      scrollTrigger: {
-
-        trigger: "#story",
-
-        start: "top top",
-
-        end: "bottom bottom",
-
-        pin: "#storyPin",
-
-        scrub: 3,
-
-        anticipatePin: 1,
-
-        invalidateOnRefresh: true,
-
-        fastScrollEnd: false,
-
-        onUpdate: (self) => {
-          updateStory(scrollModel.value);
-        },
-
-        onRefresh: () => {
-          updateStory(scrollModel.value);
-        }
-      }
+    const trigger = ScrollTrigger.create({
+      trigger: "#story",
+      start: "top top",
+      end: () => "bottom bottom-=1px",
+      pin: "#storyPin",
+      anticipatePin: 1,
+      invalidateOnRefresh: true,
+      fastScrollEnd: false,
+      onUpdate: (self) => updateStory(self.progress),
+      onLeave: () => updateStory(1),
+      onRefresh: (self) => updateStory(self.progress)
     });
 
-
-    /*
-      Each transition is deliberately eased. The hold tween has the same
-      value at both ends, so the corresponding phase freezes for a while
-      instead of immediately being replaced by the next one.
-    */
-
-    for (let i = 1; i < CINEMATIC_PHASES.length; i++) {
-
-      const point =
-        CINEMATIC_PHASES[i].point;
-
-      timeline.to(
-        scrollModel,
-        {
-          value: point,
-          duration: STORY_TRANSITION,
-          ease: "sine.inOut"
-        },
-        "+=0"
-      );
-
-      timeline.to(
-        scrollModel,
-        {
-          value: point,
-          duration: STORY_HOLD,
-          ease: "power2.inOut"
-        }
-      );
-    }
-
-    /*
-      A final gentle hold lets the user contemplate Gargantua rather than
-      immediately hitting the end of the page.
-    */
-    timeline.to(
-      scrollModel,
-      {
-        value: 1,
-        duration: 0.72,
-        ease: "sine.inOut"
-      }
-    );
-
-
-    window.__stellarTimeline = timeline;
-
+    window.__stellarScrollTrigger = trigger;
     updateStory(0);
   }
 
 
-  /*
-    Wide, feathered phase envelopes. Each phase is allowed to coexist with
-    its neighbour for a noticeable portion of the transition, but never as
-    a hard switch. This is the visual equivalent of a cinematic dissolve.
-  */
-  function phaseWeight(progress, start, end, feather = 0.045) {
-
-    if (end <= start) {
-      return 0;
-    }
-
-    const inWeight =
-      start <= 0
-        ? 1
-        : smoother(
-            range(progress, start - feather, start + feather)
-          );
-
-    const outWeight =
-      end >= 1
-        ? 1
-        : 1 - smoother(
-            range(progress, end - feather, end + feather)
-          );
-
-    return clamp01(inWeight * outWeight);
-  }
-
-
   function updateStory(progress) {
-    state.targetProgress = clamp01(progress);
+    const raw = progress >= 0.995 ? 1 : clamp01(progress);
+    state.targetProgress = mapScrollToStory(raw);
   }
 
 
   function applyStoryProgress(progress) {
+    state.progress = progress >= 0.995 ? 1 : clamp01(progress);
 
-    state.progress = clamp01(progress);
+    // Broad overlapping envelopes: the old phase never vanishes at the same
+    // instant the new one is born. There is always a visual bridge.
+    // Phase 01 → 02 is the only transition deliberately reworked: the
+    // cloud contracts continuously into the protostar instead of fading one
+    // object out while popping another object in. Later phase envelopes are
+    // unchanged.
+    const earlyBlend = smootherStep(range(state.progress, 0.055, 0.205));
+    state.cloud = 1 - earlyBlend;
+    // Protostar now completes its life-cycle BEFORE the massive blue star
+    // becomes visible. A short glow-only handoff bridges the two shots, so
+    // there is no lingering second star behind the blue-star phase.
+    const protoBirth = smootherStep(range(state.progress, 0.070, 0.185));
+    const protoDeath = smootherStep(range(state.progress, 0.188, 0.232));
+    state.protostar = clamp01(protoBirth * (1 - protoDeath));
+    state.redSupergiant = phaseWeight(state.progress, 0.340, 0.565, 0.095);
+    state.collapse = phaseWeight(state.progress, 0.485, 0.680, 0.085);
+    state.nova = phaseWeight(state.progress, 0.585, 0.805, 0.100);
+    state.compactRemnant = phaseWeight(state.progress, 0.705, 0.915, 0.090);
+    state.disk = phaseWeight(state.progress, 0.825, 1.000, 0.105);
+    state.blackHole = phaseWeight(state.progress, 0.880, 1.000, 0.095);
+    state.jets = phaseWeight(state.progress, 0.950, 1.000, 0.065);
 
-    /*
-      Long cross-fades. The intervals intentionally overlap. There is no
-      point at which an old phase is hard-hidden and a new phase pops in.
-    */
-    state.cloud = phaseWeight(state.progress, 0.000, 0.145, 0.055);
-    state.protostar = phaseWeight(state.progress, 0.095, 0.275, 0.060);
-    state.massiveStar = phaseWeight(state.progress, 0.220, 0.425, 0.065);
-    state.redSupergiant = phaseWeight(state.progress, 0.350, 0.565, 0.068);
-    state.collapse = phaseWeight(state.progress, 0.495, 0.675, 0.065);
-    state.nova = phaseWeight(state.progress, 0.605, 0.800, 0.075);
-    state.compactRemnant = phaseWeight(state.progress, 0.735, 0.925, 0.068);
-    state.disk = phaseWeight(state.progress, 0.855, 1.000, 0.080);
-    state.blackHole = phaseWeight(state.progress, 0.900, 1.000, 0.075);
-    state.jets = phaseWeight(state.progress, 0.955, 1.000, 0.060);
+    // Continuous event intensity. This is later used by the camera/bloom so
+    // the biggest moments feel like one flowing shot rather than keyframes.
+    const collapsePulse = smootherStep(range(state.progress, 0.48, 0.62)) *
+      (1 - smootherStep(range(state.progress, 0.64, 0.72)));
+    const novaPulse = smootherStep(range(state.progress, 0.60, 0.71)) *
+      (1 - smootherStep(range(state.progress, 0.76, 0.88)));
 
+    state.cinematicPulse = Math.max(collapsePulse * 0.65, novaPulse);
 
-    const percent =
-      Math.round(state.progress * 100);
+    const percent = state.progress >= 0.985 ? 100 : Math.round(state.progress * 100);
+    if (percent !== state.lastPercent) {
+      state.lastPercent = percent;
 
+      if (progressFill) {
+        progressFill.style.height = `${percent}%`;
+      }
 
-    if (progressFill) {
-      progressFill.style.height = `${percent}%`;
+      if (progressValue) {
+        progressValue.textContent = `${String(percent).padStart(2, "0")}%`;
+      }
     }
 
-    if (progressValue) {
-      progressValue.textContent =
-        `${String(percent).padStart(2, "0")}%`;
-    }
-
-
-    /*
-      Readable text cross-fades independently from phase labels. The card
-      around the current phase gets full opacity; neighbours fade in/out
-      gently instead of being toggled with is-active.
-    */
-    const cardFadeRadius = 0.082;
-
-    storyCards.forEach((card, index) => {
-
-      const center =
-        TEXT_PHASES[index] ?? 1;
-
-      const distance =
-        Math.abs(state.progress - center);
-
-      const visibility =
-        1 - smoother(
-          range(distance, 0.018, cardFadeRadius)
-        );
-
-      const opacity =
-        clamp01(visibility) * 0.94;
-
-      const lift =
-        (1 - clamp01(visibility)) * 10;
-
-      card.style.opacity =
-        String(opacity);
-
-      card.style.transform =
-        `translate3d(0, ${lift.toFixed(2)}px, 0)`;
-
-      // Keep every card in the render tree. The visual transition is
-      // controlled only by continuous opacity/transform values; there is
-      // no visibility/display switch that can pop during scrolling.
-      card.style.visibility = "visible";
-    });
-
-
-    /*
-      The small HUD label follows the nearest chapter center. It updates only
-      when the nearest chapter actually changes, so DOM writes stay cheap.
-    */
+    // The interface intentionally exposes only the current phase name.
+    // Hysteresis prevents rapid text flicker when the scroll settles near a
+    // phase boundary.
+    const phaseCenters = PHASE_POINTS;
     let nearest = 0;
     let nearestDistance = Infinity;
 
-    for (let i = 0; i < TEXT_PHASES.length; i++) {
-      const distance =
-        Math.abs(state.progress - TEXT_PHASES[i]);
-
+    for (let i = 0; i < phaseCenters.length; i++) {
+      const distance = Math.abs(state.progress - phaseCenters[i]);
       if (distance < nearestDistance) {
         nearestDistance = distance;
         nearest = i;
       }
     }
 
-    if (nearest !== currentTextStage) {
-
-      currentTextStage = nearest;
-
-      const labels = [
-        ["PHASE 01", "MOLECULAR CLOUD"],
-        ["PHASE 02", "PROTOSTAR"],
-        ["PHASE 03", "MASSIVE STAR"],
-        ["PHASE 04", "RED SUPERGIANT"],
-        ["PHASE 05", "CORE COLLAPSE"],
-        ["PHASE 06", "SUPERNOVA"],
-        ["PHASE 07", "COMPACT REMNANT"],
-        ["PHASE 08", "BLACK HOLE / GARGANTUA"]
-      ];
-
-      if (phaseLabel) {
-        phaseLabel.textContent = labels[nearest][0];
-      }
-
+    if (nearest !== currentPhase && (nearestDistance < 0.085 || currentPhase === -1)) {
+      currentPhase = nearest;
       if (phaseName) {
-        phaseName.textContent = labels[nearest][1];
+        window.clearTimeout(phaseChangeTimer);
+        phaseName.classList.add("is-changing");
+        phaseChangeTimer = window.setTimeout(() => {
+          phaseName.textContent = CINEMATIC_PHASES[currentPhase].name;
+          phaseName.classList.remove("is-changing");
+        }, 110);
       }
     }
+  }
+
+
+  function phaseWeight(progress, start, end, feather = 0.045) {
+    if (end <= start) return 0;
+
+    const inWeight = start <= 0
+      ? 1
+      : smootherStep(range(progress, start - feather, start + feather));
+
+    const outWeight = end >= 1
+      ? 1
+      : 1 - smootherStep(range(progress, end - feather, end + feather));
+
+    return clamp01(inWeight * outWeight);
   }
 
 
@@ -5666,33 +5600,44 @@
   function updateEarlyEvolution(time) {
     const cloud = state.cloud;
     const proto = state.protostar;
-    const massive = state.massiveStar;
     const red = state.redSupergiant;
     const compact = state.compactRemnant;
 
-    if (molecularCloud && state.cloud > 0.001) {
+    if (molecularCloud) {
       const pos = molecularCloud.geometry.getAttribute("position");
       const data = molecularCloud.geometry.userData.data;
       const collapse = 1 - cloud;
 
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        const gather = 1 - collapse * 0.76;
-        const a = item.theta + time * (0.015 + collapse * 0.10) + collapse * item.r * 0.085;
-        const spiral = 1 + Math.sin(time * 0.45 + item.phase + item.r) * 0.045;
-        const r = item.r * gather * spiral;
-        pos.array[i * 3] = Math.cos(a) * r * item.puff;
-        pos.array[i * 3 + 1] = item.y * item.puff * (1 - collapse * 0.55);
-        pos.array[i * 3 + 2] = Math.sin(a) * r * item.puff;
+      // Keep particle motion continuous through the transition, but never
+      // leave the material with a stale opacity when the phase is over.
+      if (cloud > 0.001 || proto > 0.001) {
+        for (let i = 0; i < data.length; i++) {
+          const item = data[i];
+          const gather = 1 - collapse * 0.76;
+          const a = item.theta + time * (0.015 + collapse * 0.10) + collapse * item.r * 0.085;
+          const spiral = 1 + Math.sin(time * 0.45 + item.phase + item.r) * 0.045;
+          const r = item.r * gather * spiral;
+          pos.array[i * 3] = Math.cos(a) * r * item.puff;
+          pos.array[i * 3 + 1] = item.y * item.puff * (1 - collapse * 0.55);
+          pos.array[i * 3 + 2] = Math.sin(a) * r * item.puff;
+        }
+        pos.needsUpdate = true;
       }
-      pos.needsUpdate = true;
       molecularCloud.material.opacity = cloud * 0.40 + proto * 0.08;
+      molecularCloud.visible = molecularCloud.material.opacity > 0.001;
       molecularCloud.rotation.y = time * 0.012;
     }
 
-    if (protostarGroup && state.protostar > 0.001) {
+    if (protostarGroup) {
+      const active = proto > 0.001;
       const breathe = 1 + Math.sin(time * 1.75) * 0.028;
-      protostarGroup.scale.setScalar(Math.max(0.001, (0.38 + proto * 1.15) * breathe));
+
+      // Explicitly drive every property both in and out of the phase.
+      // This prevents Three.js from retaining the last visible frame.
+      protostarGroup.visible = active;
+      protostarGroup.scale.setScalar(
+        active ? (0.38 + proto * 1.15) * breathe : 0.001
+      );
       protostarCore.material.opacity = proto * 0.86;
       protostarHalo.material.opacity = proto * 0.12;
       protostarDisk.material.opacity = proto * 0.54;
@@ -5700,33 +5645,41 @@
       protostarDisk.rotation.x = Math.PI * 0.48 + Math.sin(time * 0.4) * 0.02;
     }
 
-    if (protoDust && state.protostar > 0.001) {
+    if (protoDust) {
+      const active = proto > 0.001;
       const pos = protoDust.geometry.getAttribute("position");
       const data = protoDust.geometry.userData.data;
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        const a = item.a + time * (0.12 + 0.42 / Math.max(item.r, 1.2));
-        pos.array[i * 3] = Math.cos(a) * item.r;
-        pos.array[i * 3 + 1] = item.thickness + Math.sin(time * 2 + item.phase) * 0.012 * item.r;
-        pos.array[i * 3 + 2] = Math.sin(a) * item.r;
+      if (active) {
+        for (let i = 0; i < data.length; i++) {
+          const item = data[i];
+          const a = item.a + time * (0.12 + 0.42 / Math.max(item.r, 1.2));
+          pos.array[i * 3] = Math.cos(a) * item.r;
+          pos.array[i * 3 + 1] = item.thickness + Math.sin(time * 2 + item.phase) * 0.012 * item.r;
+          pos.array[i * 3 + 2] = Math.sin(a) * item.r;
+        }
+        pos.needsUpdate = true;
       }
-      pos.needsUpdate = true;
       protoDust.material.opacity = proto * 0.62;
+      protoDust.visible = active;
     }
 
-    if (protoJets && state.protostar > 0.001) {
+    if (protoJets) {
+      const active = proto > 0.001;
       const pos = protoJets.geometry.getAttribute("position");
       const data = protoJets.geometry.userData.data;
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        const w = item.radius * (1 + item.q * 0.55);
-        const a = item.angle + time * (0.9 + item.q * 0.8);
-        pos.array[i * 3] = Math.cos(a) * w;
-        pos.array[i * 3 + 1] = item.side * (0.85 + item.q * 2.7) * (0.35 + proto * 0.65);
-        pos.array[i * 3 + 2] = Math.sin(a) * w;
+      if (active) {
+        for (let i = 0; i < data.length; i++) {
+          const item = data[i];
+          const w = item.radius * (1 + item.q * 0.55);
+          const a = item.angle + time * (0.9 + item.q * 0.8);
+          pos.array[i * 3] = Math.cos(a) * w;
+          pos.array[i * 3 + 1] = item.side * (0.85 + item.q * 2.7) * (0.35 + proto * 0.65);
+          pos.array[i * 3 + 2] = Math.sin(a) * w;
+        }
+        pos.needsUpdate = true;
       }
-      pos.needsUpdate = true;
       protoJets.material.opacity = proto * 0.48;
+      protoJets.visible = active;
     }
 
     if (redGiantShell) {
@@ -5792,8 +5745,11 @@
     // protostar -> massive blue star -> red supergiant and only then folds
     // inward during core collapse. This avoids the old visual "replacement"
     // where the star seemed to disappear and reappear as another object.
+    // Start only after the protostar has fully vanished. The tiny interval
+    // before this is carried by bloom/halo rather than by two overlapping
+    // stellar meshes.
     const stellarBirth =
-      smooth(range(state.progress, 0.17, 0.255));
+      smooth(range(state.progress, 0.232, 0.282));
 
     const stellarFade =
       1 - smooth(range(state.progress, 0.585, 0.675));
@@ -7117,6 +7073,17 @@
         h
       );
 
+      // The event horizon itself now has a subtle animated flow. Physical
+      // sphere rotation is also applied so the motion remains organic even
+      // when the procedural bands briefly align with the camera.
+      if (blackHole.material && blackHole.material.uniforms) {
+        blackHole.material.uniforms.uTime.value = time;
+        blackHole.material.uniforms.uStrength.value = h;
+      }
+      blackHole.rotation.y = time * 0.105;
+      blackHole.rotation.x = Math.sin(time * 0.19) * 0.045;
+      blackHole.rotation.z = time * 0.024;
+
 
       blackHoleHalo.scale.setScalar(
         0.001 +
@@ -7559,13 +7526,34 @@
       driftZ;
 
 
+    const pulse = state.cinematicPulse;
+
+    // A tiny, smooth dolly/breath during the supernova gives the shot a
+    // physically motivated sense of scale without introducing jitter.
+    const cinematicPush = pulse * 0.18;
+    camera.position.x =
+      4.8 +
+      driftX +
+      earlySpread +
+      orbit +
+      Math.sin(state.progress * Math.PI * 2) * 0.20 +
+      (reducedMotion ? 0 : Math.sin(time * 0.11) * pulse * 0.018);
+
+    camera.position.y =
+      2.35 +
+      driftY +
+      state.cloud * 0.38 +
+      (reducedMotion ? 0 : Math.cos(time * 0.13) * pulse * 0.012);
+
+    camera.position.z =
+      CONFIG.cameraDistance -
+      pushIn +
+      driftZ -
+      cinematicPush;
+
     camera.lookAt(
       0,
-      Math.sin(
-        time *
-        0.14
-      ) *
-      0.018,
+      Math.sin(time * 0.14) * 0.018,
       0
     );
   }
@@ -7681,27 +7669,18 @@
         0.05
       );
 
-    // Keep animation timing stable on slower machines. We adapt only the
-    // visual workload, never the simulation speed or scroll mapping.
-    if (delta > 0.032 && lastQualityScale > 0.88) {
-      lastQualityScale = 0.88;
-      if (bloomPass) bloomPass.strength = Math.min(bloomPass.strength || 1.3, 1.45);
-    } else if (delta < 0.018 && lastQualityScale < 1) {
-      lastQualityScale = 1;
-    }
-
     state.time +=
       delta;
 
-    // ScrollTrigger already contributes a 3-second scrub. A second, lighter
-    // frame-rate-independent filter removes tiny input spikes without making
-    // the page feel sluggish. Reduced-motion users still get direct control.
-    const follow = reducedMotion
-      ? 1
-      : 1 - Math.exp(-11.5 * delta);
+    // Single frame-rate-independent visual follower. This is the only
+    // temporal smoothing applied to scroll, so the response stays predictable.
+    state.progress = reducedMotion
+      ? state.targetProgress
+      : damp(state.progress, state.targetProgress, 8.8, delta);
 
-    state.progress +=
-      (state.targetProgress - state.progress) * follow;
+    if (state.targetProgress >= 0.999999) {
+      state.progress = 1;
+    }
 
     applyStoryProgress(state.progress);
 

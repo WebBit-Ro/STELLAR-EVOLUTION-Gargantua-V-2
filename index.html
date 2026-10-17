@@ -13,9 +13,8 @@
 
     <canvas id="webgl" aria-hidden="true"></canvas>
 
-    <header class="hud hud--top">
-      <div class="brand">STELLAR EVOLUTION <span>/</span> 01</div>
-      <div class="scroll-hint"><span>SCROLL TO DESCEND</span><b></b></div>
+    <header class="hud hud--top" aria-label="Project header">
+      <div class="brand"><span>STELLAR EVOLUTION</span> / GARGANTUA</div>
     </header>
 
     <aside class="progress" aria-label="Прогресс визуализации">
@@ -23,12 +22,8 @@
       <div class="progress__value" id="progressValue">00%</div>
     </aside>
 
-    <div class="hud hud--bottom">
-      <div class="readout">
-        <span id="phaseLabel">PHASE 01</span>
-        <strong id="phaseName">BLUE SUPERGIANT</strong>
-      </div>
-      <div class="note">Three.js · GLSL · GSAP</div>
+    <div class="phase-display" aria-live="polite" aria-atomic="true">
+      <span class="phase-display__name" id="phaseName">MOLECULAR CLOUD</span>
     </div>
 
     <div class="vignette" aria-hidden="true"></div>
@@ -36,68 +31,7 @@
 
     <main id="story" class="story">
       <section class="story__pin" id="storyPin">
-        <div class="copy" aria-live="polite">
-          <article class="copy__card" data-stage="0">
-            <div class="kicker">ФАЗА 01 / ГАЗОПЫЛЕВОЕ ОБЛАКО</div>
-            <h1>Материя<br>собирается.</h1>
-            <p>Холодное межзвёздное облако медленно сжимается под действием гравитации. Плотность и вращение растут, а в центре зарождается будущее светило.</p>
-            <div class="fact">Гравитационный коллапс · турбулентность · протозвёздный диск</div>
-          </article>
-
-          <article class="copy__card" data-stage="1">
-            <div class="kicker">ФАЗА 02 / ПРОТОЗВЕЗДА</div>
-            <h2>Ядро<br>нагревается.</h2>
-            <p>Сжатое вещество образует горячую протозвезду. Вокруг неё закручивается диск, а лишний импульс уходит вдоль оси в узкие потоки.</p>
-            <div class="fact">Аккреция · вращение · протозвёздные струи</div>
-          </article>
-
-          <article class="copy__card" data-stage="2">
-            <div class="kicker">ФАЗА 03 / МАССИВНАЯ ЗВЕЗДА</div>
-            <h2>Звезда<br>зажигается.</h2>
-            <p>В центре запускается устойчивое термоядерное горение. Протозвезда становится горячей массивной звездой и удерживает себя давлением изнутри.</p>
-            <div class="fact">Термоядерный синтез · гидростатическое равновесие · плазма</div>
-          </article>
-
-          <article class="copy__card" data-stage="3">
-            <div class="kicker">ФАЗА 04 / КРАСНЫЙ СВЕРХГИГАНТ</div>
-            <h2>Оболочка<br>раздувается.</h2>
-            <p>Когда доступное топливо заканчивается, ядро сжимается, а внешние слои резко расширяются. Поверхность становится холоднее и краснее, а конвекция — масштабнее.</p>
-            <div class="fact">Горение оболочек · конвекция · потеря массы</div>
-          </article>
-
-          <article class="copy__card" data-stage="4">
-            <div class="kicker">ФАЗА 05 / КОЛЛАПС ЯДРА</div>
-            <h2>Ядро<br>схлопывается.</h2>
-            <p>В доли секунды сердцевина звезды перестраивается в сверхплотный остаток. Сжатие запускает нейтрино и формирует ударную волну.</p>
-            <div class="fact">Коллапс ядра · нейтрино · ударный фронт</div>
-          </article>
-
-          <article class="copy__card" data-stage="5">
-            <div class="kicker">ФАЗА 06 / СВЕРХНОВАЯ</div>
-            <h2>Звезда<br>взрывается.</h2>
-            <p>Ударная волна разрывает оболочки и выбрасывает их в пространство. На экране одновременно видны горячее ядро, несколько фронтов и клочья вещества.</p>
-            <div class="fact">Shock breakout · ejecta · ударная волна · химические элементы</div>
-          </article>
-
-          <article class="copy__card" data-stage="6">
-            <div class="kicker">ФАЗА 07 / КОМПАКТНЫЙ ОСТАТОК</div>
-            <h2>Остаётся<br>ядро.</h2>
-            <p>Часть вещества уходит наружу, а сверхплотный остаток на короткий момент проявляется как нейтронная звезда. При большей массе начинается дальнейший гравитационный коллапс.</p>
-            <div class="fact">Нейтронная звезда · пульсар · переход к чёрной дыре</div>
-          </article>
-
-          <article class="copy__card" data-stage="7">
-            <div class="kicker">ФИНАЛ / ЧЁРНАЯ ДЫРА И GARGANTUA</div>
-            <h2>Свет<br>не возвращается.</h2>
-            <p>Возникает горизонт событий. Оставшийся газ закручивается в горячий диск, свет изгибается вокруг тени, а по оси могут пробиваться релятивистские струи плазмы.</p>
-            <div class="fact">Горизонт событий · фотонное кольцо · линзирование · джеты</div>
-          </article>
-        </div>
-
-        <div class="center-title" aria-hidden="true">
-          <span>FROM SUPERNOVA</span>
-          <span>TO GARGANTUA</span>
-        </div>
+        <div class="phase-anchor" aria-hidden="true"></div>
       </section>
     </main>
 
